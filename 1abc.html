@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Auto-Changing GIF Background</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body, html {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+        }
+        
+        /* Background container with fade animation */
+        .bg-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -2;
+            background-color: #000;
+        }
+        
+        .bg-image {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            opacity: 0;
+            transition: opacity 1.5s ease-in-out;
+        }
+        
+        .bg-image.active {
+            opacity: 1;
+        }
+        
+        /* Content styling */
+        #content {
+            position: relative;
+            z-index: 1;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            text-align: center;
+            padding: 20px;
+        }
+        
+        #drop-area {
+            width: 90%;
+            max-width: 600px;
+            padding: 30px;
+            background: rgba(0, 0, 0, 0.6);
+            border: 3px dashed #fff;
+            border-radius: 15px;
+            margin-bottom: 20px;
+            backdrop-filter: blur(5px);
+        }
+        
+        #controls {
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 20px;
+        }
+        
+        button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            margin: 0 5px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        
+        button:hover {
+            background: #45a049;
+        }
+        
+        #notification {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.8);
+            color: yellow;
+            padding: 10px 20px;
+            border-radius: 5px;
+            font-size: 18px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Background container -->
+    <div class="bg-container" id="bg-container">
+        <!-- Background images will be added here by JavaScript -->
+    </div>
+    
+    <!-- Content area -->
+    <div id="content">
+        <div id="drop-area">Drag & Drop GIFs Here</div>
+        
+        <div id="controls">
+            <button id="prev-btn">Previous</button>
+            <button id="pause-btn">Pause</button>
+            <button id="next-btn">Next</button>
+            <div style="margin-top: 10px;">
+                Change every: 
+                <select id="interval-select">
+                    <option value="5000">5 seconds</option>
+                    <option value="10000" selected>10 seconds</option>
+                    <option value="15000">15 seconds</option>
+                    <option value="30000">30 seconds</option>
+                </select>
+            </div>
+        </div>
+    </div>
+    
+    <div id="notification"></div>
+
+    <script>
+        // Default GIF collection
+        const defaultGifs = [
+	    "https://img1.thatpervert.com/pics/post/Anime-naomin-iva-lucille-motto%21-haramase%21-honoo-no-oppai-isekai-ero-mahou-gakuen%21-hentai-gif-5424715.gif",
+	    "https://c.tenor.com/1UdFLCCysroAAAAd/tenor.gif",
+	    "https://c.tenor.com/QHzJT5jwF28AAAAd/tenor.gif",
+            "https://giffiles.alphacoders.com/211/211816.gif",
+            "https://giffiles.alphacoders.com/222/222264.gif",
+            "https://www.gifcen.com/wp-content/uploads/2024/05/sukuna-gif-1.gif",
+            "https://i.pinimg.com/originals/51/2f/c3/512fc362a4ca2663778db016c2b7f703.gif",
+            "https://64.media.tumblr.com/2a0c869bfbb6d53e83f17e6c239f8109/057bfde244e31a06-ff/s540x810/76b9c58bd0aaf4abfaed0f12e4f3a725070c8517.gifv",
+	    "https://64.media.tumblr.com/5d86707c96b4d6ba9cd0c77d685e2613/057bfde244e31a06-43/s540x810/2bb13fa21056d8ac9825f3c26ff56c7ddc3e5639.gifv"
+        ];
+        
+        // Configuration
+        let currentIndex = 0;
+        let isPaused = false;
+        let changeInterval = 10000; // 10 seconds default
+        let intervalId = null;
+        let userGifs = [];
+        
+        // DOM elements
+        const bgContainer = document.getElementById("bg-container");
+        const dropArea = document.getElementById("drop-area");
+        const notification = document.getElementById("notification");
+        const prevBtn = document.getElementById("prev-btn");
+        const nextBtn = document.getElementById("next-btn");
+        const pauseBtn = document.getElementById("pause-btn");
+        const intervalSelect = document.getElementById("interval-select");
+        
+        // Initialize background images
+        function initBackgrounds() {
+            // Clear existing backgrounds
+            bgContainer.innerHTML = '';
+            
+            // Combine default and user GIFs
+            const allGifs = [...defaultGifs, ...userGifs];
+            
+            // Create image elements for each GIF
+            allGifs.forEach((gif, index) => {
+                const img = document.createElement("img");
+                img.className = "bg-image";
+                img.src = gif;
+                img.dataset.index = index;
+                bgContainer.appendChild(img);
+            });
+            
+            // Show first image
+            showImage(currentIndex);
+        }
+        
+        // Show specific image
+        function showImage(index) {
+            const images = document.querySelectorAll(".bg-image");
+            if (images.length === 0) return;
+            
+            // Wrap around if needed
+            if (index >= images.length) index = 0;
+            if (index < 0) index = images.length - 1;
+            
+            // Update all images
+            images.forEach(img => {
+                img.classList.remove("active");
+            });
+            
+            // Activate selected image
+            images[index].classList.add("active");
+            currentIndex = index;
+        }
+        
+        // Start the slideshow
+        function startSlideshow() {
+            clearInterval(intervalId);
+            if (!isPaused) {
+                intervalId = setInterval(() => {
+                    showImage(currentIndex + 1);
+                }, changeInterval);
+            }
+        }
+        
+        // Event listeners
+        prevBtn.addEventListener("click", () => {
+            showImage(currentIndex - 1);
+            if (!isPaused) startSlideshow(); // Reset timer
+        });
+        
+        nextBtn.addEventListener("click", () => {
+            showImage(currentIndex + 1);
+            if (!isPaused) startSlideshow(); // Reset timer
+        });
+        
+        pauseBtn.addEventListener("click", () => {
+            isPaused = !isPaused;
+            pauseBtn.textContent = isPaused ? "Resume" : "Pause";
+            if (isPaused) {
+                clearInterval(intervalId);
+            } else {
+                startSlideshow();
+            }
+        });
+        
+        intervalSelect.addEventListener("change", () => {
+            changeInterval = parseInt(intervalSelect.value);
+            if (!isPaused) startSlideshow();
+        });
+        
+        // Drag and drop functionality
+        dropArea.addEventListener("dragover", (e) => {
+            e.preventDefault();
+            dropArea.style.borderColor = "yellow";
+        });
+        
+        dropArea.addEventListener("dragleave", () => {
+            dropArea.style.borderColor = "white";
+        });
+        
+        dropArea.addEventListener("drop", (e) => {
+            e.preventDefault();
+            dropArea.style.borderColor = "white";
+            
+            const files = e.dataTransfer.files;
+            if (files.length > 0 && files[0].type === "image/gif") {
+                const gifUrl = URL.createObjectURL(files[0]);
+                userGifs.push(gifUrl);
+                initBackgrounds();
+                notification.textContent = "GIF added to rotation!";
+                setTimeout(() => notification.textContent = "", 3000);
+            }
+        });
+        
+        // Initialize everything
+        initBackgrounds();
+        startSlideshow();
+    </script>
+</body>
+</html>
